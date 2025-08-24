@@ -1,0 +1,30 @@
+# Environment variables
+.env
+Tools/.env
+
+# Google Cloud credentials
+*.json
+!package*.json
+
+# Virtual environments
+venv/
+env/
+tts-env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
