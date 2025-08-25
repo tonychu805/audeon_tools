@@ -11,6 +11,9 @@ venv/
 env/
 tts-env/
 
+# Generated content and audio files
+Content/
+
 # Python
 __pycache__/
 *.pyc
