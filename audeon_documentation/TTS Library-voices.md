@@ -1,3 +1,7 @@
+# =====================================
+# Google Cloud TTS VOICES
+# =====================================
+
 English (Australia)	Premium	en-AU	en-AU-Chirp-HD-D	MALE	
 English (Australia)	Premium	en-AU	en-AU-Chirp-HD-F	FEMALE	
 English (Australia)	Premium	en-AU	en-AU-Chirp-HD-O	FEMALE	
@@ -229,9 +233,9 @@ English (US)	Premium	en-US	en-US-Wavenet-H	FEMALE
 English (US)	Premium	en-US	en-US-Wavenet-I	MALE	
 English (US)	Premium	en-US	en-US-Wavenet-J	MALE
 
-# ========================================
+# =====================================
 # ELEVENLABS VOICES
-# ========================================
+# =====================================
 # Default Voices (Free Tier) - Updated with actual Voice IDs
 ElevenLabs	Default	en	21m00Tcm4TlvDq8ikWAM	FEMALE	Rachel - Conversational, friendly
 ElevenLabs	Default	en	2EiwWnXFnvU5JabPnv8n	MALE	Clyde - Middle-aged, wise
@@ -284,9 +288,9 @@ ElevenLabs	Shared	es	QgCtSwnXVKRyDKcdnGOE	MALE	Carlos - peninsular young calm - 
 ElevenLabs	Shared	en	iNwc1Lv2YQLywnCvjfn1	FEMALE	Brittney - Casual Podcaster, Narrator or Storyteller - american young relaxed - This no-nonsense speaker will keep listeners intrigued across a variety of subjects and stories. ...
 ElevenLabs	Shared	es	HmCe1ONH6vWxNYuZpe8K	NEUTRAL	Sam - peninsular young professional - Neutral Spanish voice, calm and refined. Perfect for narration, corporate, wellness, and e-learning.
 
-# ========================================
+# =====================================
 # MINIMAX VOICES
-# ========================================
+# =====================================
 # Female Voices
 MiniMax	Premium	zh-CN	female-shaonv	FEMALE	Young female voice
 MiniMax	Premium	en	audiobook_female_1	FEMALE	Audiobook narrator
@@ -311,9 +315,9 @@ MiniMax	Premium	en	cute_boy	MALE	Young, cute voice
 # Sample rates: 16000, 24000, 32000 Hz
 # Bitrates: 64000, 128000, 256000 bps
 
-# ========================================
+# =====================================
 # USAGE EXAMPLES
-# ========================================
+# =====================================
 # Google Cloud TTS:
 # python Tools/TTS-extraction.py -t "Hello World" -o "output.mp3" --provider google --voice "en-US-Neural2-F"
 

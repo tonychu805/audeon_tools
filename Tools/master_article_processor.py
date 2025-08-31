@@ -369,9 +369,17 @@ class MasterArticleProcessor:
         for element in nav_elements:
             content = re.sub(element, '', content, flags=re.IGNORECASE)
         
-        # Symbol replacements for audio
+        # Handle markdown headers BEFORE general symbol replacement
+        # Remove markdown headers (# ## ###) but keep the text
+        content = re.sub(r'^#+\s*', '', content, flags=re.MULTILINE)
+        
+        # Remove standalone # symbols that aren't part of headers
+        content = re.sub(r'\s#\s', ' ', content)
+        content = re.sub(r'^#\s*$', '', content, flags=re.MULTILINE)
+        
+        # Symbol replacements for audio (without harmful # replacement)
         replacements = {
-            '&': ' and ', '@': ' at ', '#': ' number ', '%': ' percent ',
+            '&': ' and ', '@': ' at ', '%': ' percent ',
             '+': ' plus ', '=': ' equals ', '<': ' less than ', '>': ' greater than ',
             '|': ' or ', '\\': ' backslash ', '/': ' slash ', '^': ' caret ',
             '~': ' tilde ', '`': '', '$': ' dollars ', '€': ' euros ',

@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import argparse
+import glob
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -43,39 +44,104 @@ TTS_PROVIDERS = {
         'break_format': '<#{}#>',
         'emphasis_format': '{}',
         'note': 'Uses proprietary pause format <#x#> where x is seconds (0.01-99.99)'
+    },
+    'openai': {
+        'name': 'OpenAI TTS',
+        'format': 'text',
+        'extension': '.txt',
+        'supports_tags': [],
+        'max_input_length': 4096,
+        'break_format': '{}',  # No break tags, uses natural pauses
+        'emphasis_format': '{}',  # No emphasis tags, uses natural speech
+        'note': 'Plain text only. SSML not supported. Supports 6 voices: alloy, echo, fable, onyx, nova, shimmer'
     }
 }
 
-def create_ssml_markup(text, title="", provider="google"):
+def find_intro_jingle():
     """
-    Convert text to provider-specific format
+    Automatically detect the intro jingle file from the Content/audio directory structure
+    """
+    # Common audio extensions
+    audio_extensions = ['*.mp3', '*.wav', '*.m4a', '*.aac', '*.ogg', '*.flac']
+    
+    # Search patterns for intro jingle files
+    search_paths = [
+        '../Content/audio/intro_jingle/*',  # Direct path
+        './Content/audio/intro_jingle/*',   # Alternative path
+        '../Content/audio/*intro*',         # Any intro file in audio dir
+        './Content/audio/*intro*',          # Alternative intro path
+        '**/intro_jingle*',                 # Recursive search
+        '**/intro*jingle*',                 # Alternative naming
+    ]
+    
+    for search_path in search_paths:
+        for extension in audio_extensions:
+            pattern = search_path.replace('*', extension.replace('*.', '*.'))
+            matches = glob.glob(pattern, recursive=True)
+            if matches:
+                # Return the first match found
+                intro_file = matches[0]
+                # Get relative path for audio reference
+                if intro_file.startswith('./'):
+                    intro_file = intro_file[2:]  # Remove './'
+                elif intro_file.startswith('../'):
+                    intro_file = intro_file[3:]  # Remove '../'
+                return intro_file
+    
+    # Fallback to generic name if no file found
+    return "intro_jingle.mp3"
+
+def create_ssml_markup(text, title="", author="", provider="google"):
+    """
+    Convert text to provider-specific format following Audio Track Format Specification
     """
     if not text:
         return ""
     
     if provider == 'minimax':
-        return create_minimax_format(text, title)
+        return create_minimax_format(text, title, author)
     elif provider == 'elevenlabs':
-        return create_elevenlabs_ssml(text, title)
+        return create_elevenlabs_ssml(text, title, author)
+    elif provider == 'openai':
+        return create_openai_format(text, title, author)
     else:  # Google Cloud TTS (default)
-        return create_google_ssml(text, title)
+        return create_google_ssml(text, title, author)
 
-def create_google_ssml(text, title=""):
+def create_google_ssml(text, title="", author=""):
     """
-    Create Google Cloud TTS compatible SSML
+    Create Google Cloud TTS compatible SSML following Audio Track Format Specification
     """
     if not text:
         return ""
     
-    ssml = '<speak>\n'
+    # Detect intro jingle file
+    intro_jingle_path = find_intro_jingle()
     
-    # Add title with emphasis if provided
-    lines = text.strip().split('\n')
-    first_line = lines[0].strip() if lines else ""
+    ssml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    ssml += '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">\n\n'
     
-    if title and title.strip() != first_line:
-        ssml += f'  <emphasis level="strong">{escape_ssml_text(title)}</emphasis>\n'
-        ssml += '  <break time="1s"/>\n'
+    # 1. Intro Jingle Reference
+    ssml += '  <!-- Intro Jingle Reference -->\n'
+    ssml += f'  <audio src="{intro_jingle_path}"/>\n\n'
+    
+    # 2. Title Announcement
+    if title:
+        ssml += '  <!-- Title -->\n'
+        ssml += '  <prosody rate="0.9" pitch="+2st">\n'
+        ssml += f'    <emphasis level="moderate">{escape_ssml_text(title)}</emphasis>\n'
+        ssml += '  </prosody>\n'
+        ssml += '  <break time="1s"/>\n\n'
+    
+    # 3. Author Attribution
+    if author:
+        ssml += '  <!-- Author -->\n'
+        ssml += '  <prosody rate="1.0">\n'
+        ssml += f'    By <emphasis level="moderate">{escape_ssml_text(author)}</emphasis>\n'
+        ssml += '  </prosody>\n'
+        ssml += '  <break time="2s"/>\n\n'
+    
+    # 4. Article Content
+    ssml += '  <!-- Article Content -->\n'
     
     # Split text into paragraphs
     paragraphs = text.split('\n\n')
@@ -116,25 +182,48 @@ def create_google_ssml(text, title=""):
             if i < len(paragraphs) - 1:
                 ssml += '  <break time="500ms"/>\n'
     
+    # 5. Standardized Ending
+    ssml += '\n  <!-- Ending -->\n'
+    ssml += '  <break time="2s"/>\n'
+    ssml += '  <prosody rate="0.95" pitch="+1st">\n'
+    ssml += '    Thank you for listening. <break time="0.5s"/> \n'
+    ssml += '    Check out my other pieces for more insights.\n'
+    ssml += '  </prosody>\n\n'
+    
     ssml += '</speak>'
     return ssml
 
-def create_elevenlabs_ssml(text, title=""):
+def create_elevenlabs_ssml(text, title="", author=""):
     """
-    Create ElevenLabs compatible SSML (limited tag support)
+    Create ElevenLabs compatible SSML following Audio Track Format Specification (limited tag support)
     """
     if not text:
         return ""
     
-    ssml = '<speak>\n'
+    # Detect intro jingle file
+    intro_jingle_path = find_intro_jingle()
     
-    # Add title with emphasis if provided
-    lines = text.strip().split('\n')
-    first_line = lines[0].strip() if lines else ""
+    ssml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    ssml += '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">\n\n'
     
-    if title and title.strip() != first_line:
+    # 1. Intro Jingle Reference (Note: ElevenLabs may not support audio tags, but included for completeness)
+    ssml += '  <!-- Intro Jingle Reference -->\n'
+    ssml += f'  <audio src="{intro_jingle_path}"/>\n\n'
+    
+    # 2. Title Announcement
+    if title:
+        ssml += '  <!-- Title -->\n'
         ssml += f'  <emphasis>{escape_ssml_text(title)}</emphasis>\n'
-        ssml += '  <break time="1s"/>\n'
+        ssml += '  <break time="1s"/>\n\n'
+    
+    # 3. Author Attribution
+    if author:
+        ssml += '  <!-- Author -->\n'
+        ssml += f'  By <emphasis>{escape_ssml_text(author)}</emphasis>\n'
+        ssml += '  <break time="2s"/>\n\n'
+    
+    # 4. Article Content
+    ssml += '  <!-- Article Content -->\n'
     
     # Split text into paragraphs
     paragraphs = text.split('\n\n')
@@ -174,26 +263,39 @@ def create_elevenlabs_ssml(text, title=""):
             if i < len(paragraphs) - 1:
                 ssml += '  <break time="600ms"/>\n'
     
+    # 5. Standardized Ending
+    ssml += '\n  <!-- Ending -->\n'
+    ssml += '  <break time="2s"/>\n'
+    ssml += '  Thank you for listening. <break time="0.5s"/> \n'
+    ssml += '  Check out my other pieces for more insights.\n\n'
+    
     ssml += '</speak>'
     return ssml
 
-def create_minimax_format(text, title=""):
+def create_minimax_format(text, title="", author=""):
     """
-    Create MiniMax compatible text format with pause markers
+    Create MiniMax compatible text format with pause markers following Audio Track Format Specification
     """
     if not text:
         return ""
     
+    # Detect intro jingle file
+    intro_jingle_path = find_intro_jingle()
+    
     formatted_text = ""
     
-    # Add title if provided
-    lines = text.strip().split('\n')
-    first_line = lines[0].strip() if lines else ""
+    # 1. Intro Jingle Reference (Note: MiniMax doesn't support audio references, noted in comment)
+    formatted_text += f"<!-- Intro Jingle: {intro_jingle_path} should be prepended during final audio assembly --> "
     
-    if title and title.strip() != first_line:
+    # 2. Title Announcement
+    if title:
         formatted_text += title.strip() + " <#1.0#> "
     
-    # Split text into paragraphs
+    # 3. Author Attribution
+    if author:
+        formatted_text += f"By {author.strip()} <#2.0#> "
+    
+    # 4. Article Content
     paragraphs = text.split('\n\n')
     
     for i, paragraph in enumerate(paragraphs):
@@ -231,6 +333,71 @@ def create_minimax_format(text, title=""):
             # Add pause between paragraphs
             if i < len(paragraphs) - 1:
                 formatted_text += "<#0.6#> "
+    
+    # 5. Standardized Ending
+    formatted_text += "<#2.0#> Thank you for listening. <#0.5#> Check out my other pieces for more insights."
+    
+    return formatted_text.strip()
+
+def create_openai_format(text, title="", author=""):
+    """
+    Create OpenAI TTS compatible text format following Audio Track Format Specification
+    """
+    if not text:
+        return ""
+    
+    # Detect intro jingle file
+    intro_jingle_path = find_intro_jingle()
+    
+    formatted_text = ""
+    
+    # 1. Intro Jingle Reference (Note: OpenAI TTS doesn't support audio references, noted in comment)
+    formatted_text += f"[Note: Intro jingle '{intro_jingle_path}' should be prepended during final audio assembly]\n\n"
+    
+    # 2. Title Announcement
+    if title:
+        formatted_text += title.strip() + "\n\n"
+    
+    # 3. Author Attribution
+    if author:
+        formatted_text += f"By {author.strip()}\n\n"
+    
+    # 4. Article Content - Clean and format for natural speech
+    paragraphs = text.split('\n\n')
+    
+    for i, paragraph in enumerate(paragraphs):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        
+        # Skip if this paragraph is the same as the title we already added
+        if title and paragraph.strip() == title.strip():
+            continue
+            
+        # Check if paragraph looks like a heading
+        is_heading = (len(paragraph) < 100 and 
+                     not paragraph.endswith('.') and 
+                     not paragraph.endswith('!') and 
+                     not paragraph.endswith('?') and
+                     '\n' not in paragraph and
+                     paragraph != title)
+        
+        if is_heading:
+            # Format as heading with natural pause
+            formatted_text += paragraph + "\n\n"
+        else:
+            # Regular paragraph - clean format for natural speech
+            sentences = split_into_sentences(paragraph)
+            for sentence in sentences:
+                if sentence.strip():
+                    formatted_text += sentence.strip() + " "
+            
+            # Add paragraph break
+            if i < len(paragraphs) - 1:
+                formatted_text += "\n\n"
+    
+    # 5. Standardized Ending
+    formatted_text += "\n\nThank you for listening. Check out my other pieces for more insights."
     
     return formatted_text.strip()
 
@@ -327,12 +494,23 @@ def clean_for_audio_synthesis(text):
     if not text:
         return ""
     
+    # Handle markdown headers and formatting BEFORE general symbol replacement
+    # Remove markdown headers (# ## ###) but keep the text
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    
+    # Handle bullet points and numbered lists better
+    text = re.sub(r'^\s*[\-\*\+]\s+', '• ', text, flags=re.MULTILINE)  # Convert to bullet
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # Remove numbered list markers
+    
+    # Remove standalone # symbols that aren't part of headers
+    text = re.sub(r'\s#\s', ' ', text)
+    text = re.sub(r'^#\s*$', '', text, flags=re.MULTILINE)
+    
     # Remove or replace problematic characters and symbols
     replacements = {
         # Programming/technical symbols
         '&': ' and ',
         '@': ' at ',
-        '#': ' number ',
         '%': ' percent ',
         '+': ' plus ',
         '=': ' equals ',
@@ -484,23 +662,25 @@ def extract_and_process_content(json_file, output_dir, provider="google", config
             # Get provider configuration
             provider_config = TTS_PROVIDERS.get(provider, TTS_PROVIDERS['google'])
             
-            # Apply provider-specific formatting
-            final_content = create_ssml_markup(cleaned_content, title, provider)
-            file_extension = provider_config['extension']
-            
-            # Create filename based on date and title (no track_id)
-            release_date = article.get('releaseDate', '')
+            # Extract creator for author attribution
             creator = article.get('creator', '')
             
-            # Format: YYYY-MM-DD_creator_title or just title if no date/creator
+            # Apply provider-specific formatting with Audio Track Format Specification
+            final_content = create_ssml_markup(cleaned_content, title, creator, provider)
+            file_extension = provider_config['extension']
+            
+            # Create filename based on Audio Track Format Specification: YYYY-MM-DD_Author_Title_VoiceID
+            release_date = article.get('releaseDate', '')
+            
+            # Format: YYYY-MM-DD_Creator_Title_[VoiceID] (VoiceID to be added during TTS synthesis)
             if release_date and creator:
-                filename_base = f"{release_date}_{sanitize_filename(creator)}_{sanitize_filename(title)}"
+                filename_base = f"{release_date}_{sanitize_filename(creator)}_{sanitize_filename(title)}_[VoiceID]"
             elif release_date:
-                filename_base = f"{release_date}_{sanitize_filename(title)}"
+                filename_base = f"{release_date}_{sanitize_filename(title)}_[VoiceID]"
             elif creator:
-                filename_base = f"{sanitize_filename(creator)}_{sanitize_filename(title)}"
+                filename_base = f"{sanitize_filename(creator)}_{sanitize_filename(title)}_[VoiceID]"
             else:
-                filename_base = sanitize_filename(title)
+                filename_base = f"{sanitize_filename(title)}_[VoiceID]"
             
             filename = f"{filename_base}{file_extension}"
             filepath = os.path.join(output_dir, filename)
@@ -559,7 +739,7 @@ Examples:
     )
     
     parser.add_argument('json_file', nargs='?', help='Path to JSON file containing articles')
-    parser.add_argument('-p', '--provider', choices=['google', 'elevenlabs', 'minimax'], 
+    parser.add_argument('-p', '--provider', choices=['google', 'elevenlabs', 'minimax', 'openai'], 
                        default='google', help='TTS provider (default: google)')
     parser.add_argument('-o', '--output-dir', 
                        help='Output directory for files (default: provider-specific directory)')
@@ -586,7 +766,8 @@ Examples:
         provider_dirs = {
             'google': '../audeon_tools/Content/articles/google_tts',
             'elevenlabs': '../audeon_tools/Content/articles/elevenlabs',
-            'minimax': '../audeon_tools/Content/articles/minimax'
+            'minimax': '../audeon_tools/Content/articles/minimax',
+            'openai': '../audeon_tools/Content/articles/openai_tts'
         }
         args.output_dir = provider_dirs.get(args.provider, '../audeon_tools/Content/articles/output')
     

@@ -459,17 +459,28 @@ python master_article_processor.py
 
 ### **Step 2: Content Extraction** 
 ```bash
-python content_extractor.py articles_with_summaries.json -p google
+python content_extractor.py articles_with_summaries.json -p google -o ./google_content
 # Input: JSON from Step 1
-# Output: Provider-specific SSML files
+# Output: Provider-specific SSML files with Audio Track Format
+# Format: YYYY-MM-DD_Author_Title_[VoiceID].ssml
 ```
+
+**Audio Track Structure**: Content extraction now implements the complete [Audio_Track_Format_Specification.md](Audio_Track_Format_Specification.md):
+1. **Intro Jingle Reference**: `<audio src="intro_jingle.mp3"/>`
+2. **Title Announcement**: Proper SSML formatting with emphasis and prosody
+3. **Author Attribution**: "By [Author Name]" extracted from JSON metadata
+4. **Article Content**: Cleaned and formatted article text
+5. **Standardized Ending**: "Thank you for listening. Check out my other pieces for more insights."
 
 ### **Step 3: Audio Generation**
 ```bash
-python batch_tts_processor.py input_dir output_dir --provider google
-# Input: SSML files from Step 2  
-# Output: Audio files
+python batch_tts_processor.py ./google_content ./audio --provider google
+# Input: SSML files from Step 2 with Audio Track Format
+# Output: Complete audio files with intro jingle, title, author, content, ending
+# Files: YYYY-MM-DD_Author_Title_VoiceID.mp3
 ```
+
+**Final Output**: Audio files follow the complete Audio Track Format with all 5 components seamlessly integrated.
 
 ### **Data Flow Validation**
 - **JSON Compatibility**: Output format matches content_extractor.py expectations

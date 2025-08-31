@@ -438,22 +438,65 @@ Same as ElevenLabs with additional support for:
 
 ## Integration Examples
 
-### Content Extractor Usage
+### Content Extractor Usage with Audio Track Format
+
+#### Complete Pipeline Integration
+```bash
+# Step 1: Process articles to enhanced JSON
+python Tools/master_article_processor.py
+
+# Step 2: Generate Audio Track Format content
+python Tools/content_extractor.py articles_with_summaries.json -p google -o ./google_output
+
+# Step 3: Synthesize complete audio tracks
+python Tools/batch_tts_processor.py ./google_output ./audio --provider google
+```
+
+#### Provider-Specific Content Generation
 
 #### Google Cloud TTS
 ```bash
 python Tools/content_extractor.py articles.json -p google -o ./google_output
+# Output: Full SSML with prosody control and audio jingle reference
+# Files: YYYY-MM-DD_Author_Title_[VoiceID].ssml
 ```
 
 #### ElevenLabs
 ```bash
 python Tools/content_extractor.py articles.json -p elevenlabs -o ./elevenlabs_output
+# Output: Simplified SSML compatible with ElevenLabs limitations  
+# Files: YYYY-MM-DD_Author_Title_[VoiceID].ssml
 ```
 
 #### MiniMax
 ```bash
 python Tools/content_extractor.py articles.json -p minimax -o ./minimax_output
+# Output: Text format with proprietary pause markers
+# Files: YYYY-MM-DD_Author_Title_[VoiceID].txt
 ```
+
+**Audio Track Format Implementation**: All providers generate content following the [Audio_Track_Format_Specification.md](Audio_Track_Format_Specification.md):
+
+1. **Intro Jingle Reference**: 
+   - Google/ElevenLabs: `<audio src="intro_jingle.mp3"/>`
+   - MiniMax: Comment notation for manual assembly
+
+2. **Title Announcement**:
+   - Google: `<prosody rate="0.9" pitch="+2st"><emphasis level="moderate">Title</emphasis></prosody>`
+   - ElevenLabs: `<emphasis>Title</emphasis>`  
+   - MiniMax: `Title <#1.0#>`
+
+3. **Author Attribution**:
+   - Google: `<prosody rate="1.0">By <emphasis level="moderate">Author</emphasis></prosody>`
+   - ElevenLabs: `By <emphasis>Author</emphasis>`
+   - MiniMax: `By Author <#2.0#>`
+
+4. **Article Content**: Provider-optimized formatting with appropriate pauses and structure
+
+5. **Standardized Ending**:
+   - Google: `<prosody rate="0.95" pitch="+1st">Thank you for listening...</prosody>`
+   - ElevenLabs: `Thank you for listening... <break time="0.5s"/>`
+   - MiniMax: `<#2.0#> Thank you for listening. <#0.5#> Check out my other pieces...`
 
 ### API Call Examples
 

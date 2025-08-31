@@ -10,6 +10,8 @@ import re
 import json
 import datetime
 import xml.etree.ElementTree as ET
+import glob
+import shutil
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -24,6 +26,172 @@ if not load_dotenv():
 PROVIDER_GOOGLE = "google"
 PROVIDER_ELEVENLABS = "elevenlabs"
 PROVIDER_MINIMAX = "minimax"
+PROVIDER_OPENAI = "openai"
+
+def find_intro_jingle():
+    """
+    Automatically detect the intro jingle file from the Content/audio directory structure
+    """
+    # Common audio extensions
+    audio_extensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']
+    
+    # Search patterns for intro jingle files (more comprehensive)
+    search_patterns = [
+        # Direct patterns
+        '../Content/audio/intro_jingle/*',  # From Tools/
+        './Content/audio/intro_jingle/*',   # From project root
+        'Content/audio/intro_jingle/*',     # Alternative path
+        
+        # Broader intro file patterns
+        '../Content/audio/*intro*',         # Any intro file in audio dir
+        './Content/audio/*intro*',          # Alternative intro path
+        'Content/audio/*intro*',            # From project root
+        
+        # Recursive searches
+        '**/intro_jingle*',                 # Recursive search
+        '**/intro*jingle*',                 # Alternative naming
+        '**/intro*startup*',                # Your specific file pattern
+        '**/intro*computer*startup*',       # Full pattern match
+        
+        # Additional patterns for your specific case
+        '../../Content/audio/intro_jingle/*',  # Go up more levels
+        '../*/Content/audio/intro_jingle/*',   # Alternative structures
+    ]
+    
+    for pattern in search_patterns:
+        for ext in audio_extensions:
+            # Try pattern with extension
+            full_pattern = f"{pattern}.{ext}" if not pattern.endswith('*') else pattern.replace('*', f'*.{ext}')
+            matches = glob.glob(full_pattern, recursive=True)
+            if matches:
+                intro_file = matches[0]
+                # Verify the file actually exists
+                if os.path.exists(intro_file):
+                    print(f"Found intro jingle: {intro_file}")
+                    return os.path.abspath(intro_file)  # Return absolute path
+    
+    # If no patterns work, try a more aggressive recursive search
+    print("Trying comprehensive recursive search...")
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if 'intro' in file.lower() and any(file.lower().endswith(f'.{ext}') for ext in audio_extensions):
+                full_path = os.path.join(root, file)
+                print(f"Found intro jingle: {full_path}")
+                return os.path.abspath(full_path)
+    
+    print("Warning: No intro jingle file found")
+    return None
+
+def combine_audio_with_intro(intro_jingle_path, generated_audio_path, final_output_path):
+    """
+    Combine intro jingle with generated audio using ffmpeg
+    """
+    if not intro_jingle_path or not os.path.exists(intro_jingle_path):
+        print("Warning: Intro jingle not found, skipping audio combination")
+        return False
+    
+    if not os.path.exists(generated_audio_path):
+        print(f"Error: Generated audio file not found: {generated_audio_path}")
+        return False
+    
+    try:
+        # Use ffmpeg to concatenate intro jingle + generated audio
+        print(f"Combining intro jingle with generated audio...")
+        
+        # Method 1: Try using filter_complex for more reliable concatenation
+        cmd = [
+            'ffmpeg',
+            '-i', intro_jingle_path,
+            '-i', generated_audio_path,
+            '-filter_complex', '[0:a][1:a]concat=n=2:v=0:a=1[out]',
+            '-map', '[out]',
+            '-ac', '2',  # Ensure stereo output
+            '-ar', '44100',  # Standard sample rate
+            '-b:a', '128k',  # Standard bitrate
+            '-y',  # Overwrite output file
+            final_output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"✅ Successfully combined audio with intro jingle: {final_output_path}")
+            # Remove the original generated file (without intro)
+            os.remove(generated_audio_path)
+            return True
+        else:
+            print(f"❌ Method 1 failed, trying Method 2...")
+            print(f"Error details: {result.stderr}")
+            
+            # Method 2: Convert both to same format first, then concatenate
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_intro:
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_content:
+                    try:
+                        # Convert intro to standard format
+                        cmd1 = [
+                            'ffmpeg', '-i', intro_jingle_path,
+                            '-ar', '44100', '-ac', '2', '-b:a', '128k',
+                            '-y', temp_intro.name
+                        ]
+                        
+                        # Convert generated audio to standard format
+                        cmd2 = [
+                            'ffmpeg', '-i', generated_audio_path,
+                            '-ar', '44100', '-ac', '2', '-b:a', '128k',
+                            '-y', temp_content.name
+                        ]
+                        
+                        # Run conversions
+                        result1 = subprocess.run(cmd1, capture_output=True, text=True)
+                        result2 = subprocess.run(cmd2, capture_output=True, text=True)
+                        
+                        if result1.returncode == 0 and result2.returncode == 0:
+                            # Now concatenate the standardized files
+                            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                                f.write(f"file '{temp_intro.name}'\n")
+                                f.write(f"file '{temp_content.name}'\n")
+                                filelist_path = f.name
+                            
+                            cmd3 = [
+                                'ffmpeg', 
+                                '-f', 'concat',
+                                '-safe', '0',
+                                '-i', filelist_path,
+                                '-c', 'copy',
+                                '-y',
+                                final_output_path
+                            ]
+                            
+                            result3 = subprocess.run(cmd3, capture_output=True, text=True)
+                            os.unlink(filelist_path)
+                            
+                            if result3.returncode == 0:
+                                print(f"✅ Successfully combined audio with intro jingle (Method 2): {final_output_path}")
+                                os.remove(generated_audio_path)
+                                return True
+                            else:
+                                print(f"❌ Method 2 also failed: {result3.stderr}")
+                                return False
+                        else:
+                            print(f"❌ Format conversion failed")
+                            print(f"Intro conversion: {result1.stderr}")
+                            print(f"Content conversion: {result2.stderr}")
+                            return False
+                            
+                    finally:
+                        # Clean up temp files
+                        try:
+                            os.unlink(temp_intro.name)
+                            os.unlink(temp_content.name)
+                        except:
+                            pass
+            
+    except subprocess.CalledProcessError as e:
+        print(f"Error running ffmpeg: {e}")
+        return False
+    except Exception as e:
+        print(f"Error combining audio: {e}")
+        return False
 
 def is_ssml(text):
     """
@@ -168,7 +336,6 @@ def process_multi_voice_ssml(ssml_text, output_file, lang='en-US', audio_format=
                 return False
         elif len(temp_files) == 1:
             # Only one file, just copy it
-            import shutil
             shutil.copy(temp_files[0], output_file)
             print(f"Single-voice audio saved to: {output_file}")
         
@@ -178,6 +345,25 @@ def process_multi_voice_ssml(ssml_text, output_file, lang='en-US', audio_format=
                 os.unlink(temp_file)
             except:
                 pass
+        
+        # Automatically add intro jingle to the generated multi-voice audio
+        intro_jingle_path = find_intro_jingle()
+        if intro_jingle_path:
+            # Create temporary filename for the original audio
+            temp_audio = output_file + '.temp'
+            
+            # Move original to temp
+            shutil.move(output_file, temp_audio)
+            
+            # Combine intro jingle + original audio -> final output
+            combine_success = combine_audio_with_intro(intro_jingle_path, temp_audio, output_file)
+            
+            if not combine_success:
+                # If combination failed, restore original file
+                shutil.move(temp_audio, output_file)
+                print("Warning: Intro jingle combination failed, kept original multi-voice audio")
+        else:
+            print("No intro jingle found, keeping original multi-voice audio")
         
         return True
         
@@ -417,7 +603,6 @@ def process_large_ssml(ssml_text, output_file, lang='en-US', voice_name=None, au
                 return False
         elif len(temp_files) == 1:
             # Only one file, just copy it
-            import shutil
             shutil.copy(temp_files[0], output_file)
             print(f"Single chunk audio saved to: {output_file}")
         else:
@@ -430,6 +615,25 @@ def process_large_ssml(ssml_text, output_file, lang='en-US', voice_name=None, au
                 os.unlink(temp_file)
             except:
                 pass
+        
+        # Automatically add intro jingle to the generated large SSML audio
+        intro_jingle_path = find_intro_jingle()
+        if intro_jingle_path:
+            # Create temporary filename for the original audio
+            temp_audio = output_file + '.temp'
+            
+            # Move original to temp
+            shutil.move(output_file, temp_audio)
+            
+            # Combine intro jingle + original audio -> final output
+            combine_success = combine_audio_with_intro(intro_jingle_path, temp_audio, output_file)
+            
+            if not combine_success:
+                # If combination failed, restore original file
+                shutil.move(temp_audio, output_file)
+                print("Warning: Intro jingle combination failed, kept original large SSML audio")
+        else:
+            print("No intro jingle found, keeping original large SSML audio")
         
         return True
         
@@ -584,12 +788,89 @@ def elevenlabs_tts_single(text, output_file, voice_id=None, model_id="eleven_tur
         print(f"Error with ElevenLabs TTS: {e}")
         return False
 
+def openai_tts_single(text, output_file, voice_name=None, model="tts-1", speed=1.0):
+    """
+    Convert text to speech using OpenAI TTS API (single request)
+    """
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        print("Error: OPENAI_API_KEY not found in environment variables")
+        return False
+    
+    # Default voice if none specified
+    if not voice_name:
+        voice_name = "alloy"  # Default OpenAI voice
+    
+    # OpenAI TTS supported voices
+    supported_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    if voice_name not in supported_voices:
+        print(f"Warning: Voice '{voice_name}' not supported. Using 'alloy'. Supported voices: {supported_voices}")
+        voice_name = "alloy"
+    
+    # OpenAI TTS supported models
+    supported_models = ["tts-1", "tts-1-hd"]
+    if model not in supported_models:
+        print(f"Warning: Model '{model}' not supported. Using 'tts-1'. Supported models: {supported_models}")
+        model = "tts-1"
+    
+    # Speed must be between 0.25 and 4.0
+    speed = max(0.25, min(4.0, speed))
+    
+    try:
+        url = "https://api.openai.com/v1/audio/speech"
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Strip SSML tags if present (OpenAI TTS doesn't support SSML)
+        clean_text = text
+        if is_ssml(text):
+            print("Note: OpenAI TTS doesn't support SSML. Converting to plain text...")
+            # Simple SSML tag removal
+            clean_text = re.sub(r'<[^>]+>', '', text)
+            # Clean up extra whitespace
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+            # Remove XML declarations
+            clean_text = re.sub(r'<\?xml[^>]*\?>', '', clean_text)
+        
+        payload = {
+            "model": model,
+            "input": clean_text,
+            "voice": voice_name,
+            "speed": speed
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code == 200:
+            with open(output_file, 'wb') as f:
+                f.write(response.content)
+            return True
+        else:
+            print(f"Error with OpenAI TTS: API request failed with status {response.status_code}: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error with OpenAI TTS: {e}")
+        return False
+
 def text_to_speech_single(text, output_file, lang='en-US', voice_name=None, audio_format='MP3', 
                          speaking_rate=1.0, pitch=0.0, volume_gain_db=0.0, force_ssml=False, provider=PROVIDER_GOOGLE):
     """
-    Convert text to speech using specified provider (Google TTS, ElevenLabs, or MiniMax)
+    Convert text to speech using specified provider (Google TTS, ElevenLabs, MiniMax, or OpenAI)
     """
-    if provider == PROVIDER_MINIMAX:
+    if provider == PROVIDER_OPENAI:
+        # Convert speaking_rate to OpenAI speed parameter
+        return openai_tts_single(
+            text=text,
+            output_file=output_file,
+            voice_name=voice_name,
+            model="tts-1-hd" if audio_format == "HD" else "tts-1",
+            speed=speaking_rate
+        )
+    elif provider == PROVIDER_MINIMAX:
         # Convert parameters for MiniMax
         volume_linear = min(2.0, max(0.1, 1.0 + (volume_gain_db / 20)))  # Convert dB to linear scale
         return minimax_tts_single(
@@ -710,6 +991,12 @@ def text_to_speech(text, output_file=None, lang='en-US', voice_name=None, audio_
             print("Error: ELEVENLABS_API_KEY not found in environment variables")
             print("Make sure your .env file contains: ELEVENLABS_API_KEY=your_api_key_here")
             sys.exit(1)
+    elif provider == PROVIDER_OPENAI:
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            print("Error: OPENAI_API_KEY not found in environment variables")
+            print("Make sure your .env file contains: OPENAI_API_KEY=your_api_key_here")
+            sys.exit(1)
     else:
         api_key = os.getenv('GOOGLE_TTS_API_KEY')
         if not api_key:
@@ -742,6 +1029,26 @@ def text_to_speech(text, output_file=None, lang='en-US', voice_name=None, audio_
                                           speaking_rate, pitch, volume_gain_db, force_ssml, provider)
             if success:
                 print(f"Audio saved to: {output_file}")
+                
+                # Automatically add intro jingle to the generated audio
+                intro_jingle_path = find_intro_jingle()
+                if intro_jingle_path:
+                    # Create temporary filename for the original audio
+                    temp_audio = output_file + '.temp'
+                    
+                    # Move original to temp
+                    shutil.move(output_file, temp_audio)
+                    
+                    # Combine intro jingle + original audio -> final output
+                    combine_success = combine_audio_with_intro(intro_jingle_path, temp_audio, output_file)
+                    
+                    if not combine_success:
+                        # If combination failed, restore original file
+                        shutil.move(temp_audio, output_file)
+                        print("Warning: Intro jingle combination failed, kept original audio")
+                else:
+                    print("No intro jingle found, keeping original audio")
+                    
             return success
         else:
             # Play audio directly
@@ -785,7 +1092,7 @@ def main():
     parser.add_argument('-o', '--output', help='Output audio file path (optional)')
     parser.add_argument('-l', '--lang', default='en-US', help='Language code (default: en-US)')
     parser.add_argument('-v', '--voice', help='Voice name or ID')
-    parser.add_argument('--provider', choices=[PROVIDER_GOOGLE, PROVIDER_ELEVENLABS, PROVIDER_MINIMAX], default=PROVIDER_GOOGLE,
+    parser.add_argument('--provider', choices=[PROVIDER_GOOGLE, PROVIDER_ELEVENLABS, PROVIDER_MINIMAX, PROVIDER_OPENAI], default=PROVIDER_GOOGLE,
                        help='TTS provider (default: google)')
     parser.add_argument('--format', default='MP3', choices=['MP3', 'LINEAR16', 'OGG_OPUS'], 
                        help='Audio format (default: MP3)')

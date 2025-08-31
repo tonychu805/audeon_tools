@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+
+  <!-- Intro Jingle Reference -->
+  <audio src="intro_jingle.mp3"/>
+
+  <!-- Title -->
+  <prosody rate="0.9" pitch="+2st">
+    <emphasis level="moderate">The Black Box of Product Management</emphasis>
+  </prosody>
+  <break time="1s"/>
+
+  <!-- Author -->
+  <prosody rate="1.0">
+    By <emphasis level="moderate">Brandon Chu</emphasis>
+  </prosody>
+  <break time="2s"/>
+
+  <!-- Article Content -->
+  <s>
+    <emphasis level="moderate">number The Black Box of Product Management</emphasis>
+  </s>
+  <break time="800ms"/>
+  <s>
+    <emphasis level="moderate">number number PMs get sad when you ask them why they exist</emphasis>
+  </s>
+  <break time="800ms"/>
+  <p>
+    <s>There is a rite of passage in the product management world, where all PMs have experienced being asked:</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>What does a product manager do, anyway?</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>I empathize with designers and engineers for asking this question.</s>
+    <s>In their shoes, I would be just as skeptical, because a product manager&apos;s activities are fragmented, and don&apos;t reveal the true discipline beneath.</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>When I first started in product management, I didn&apos;t even know I was doing it.</s>
+    <s>Instead, I was a first time founder and thought I was just doing startup .</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>Product Management is the by-product of two exponential forces being exerted on a company.</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>1.</s>
+    <s>Speed: The company exists in an industry where the rate of technological innovation is accelerating
+2.</s>
+    <s>Scale: Growth in the company&apos;s product, organization, and customers are creating complexity</s>
+  </p>
+  <break time="500ms"/>
+  <p>
+    <s>Speed is an exponential force because with every period of time, more change is occurring than in the last.</s>
+    <s>Similarly with scale; every extra feature, employee, or user is adding more complexity to the system than the last.</s>
+  </p>
+
+  <!-- Ending -->
+  <break time="2s"/>
+  <prosody rate="0.95" pitch="+1st">
+    Thank you for listening. <break time="0.5s"/> 
+    Check out my other pieces for more insights.
+  </prosody>
+
+</speak>

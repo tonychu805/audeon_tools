@@ -36,6 +36,7 @@ TTS-Extraction is a comprehensive audio generation tool that converts text and S
 ### Current Provider Support
 - **Google Cloud TTS** ✅ Full Support
 - **ElevenLabs** ✅ Full Support  
+- **OpenAI TTS** ✅ **Full Support**
 - **MiniMax TTS** ❌ **Requires Implementation**
 
 ---
@@ -61,6 +62,7 @@ Processing Layer:
 Provider Layer:
 ├── Google Cloud TTS API
 ├── ElevenLabs API
+├── OpenAI TTS API
 └── MiniMax API (To be implemented)
 
 Output Layer:
@@ -150,6 +152,44 @@ https://api.elevenlabs.io/v1/text-to-speech/{voice_id}
 - **Voice Selection**: 120+ voices, voice cloning
 - **Audio Format**: MP3 only
 - **Models**: Flash v2.5 (75ms latency), Turbo v2.5, v3
+
+### OpenAI TTS (Implemented)
+
+#### API Configuration
+```python
+# Environment Variable Required
+OPENAI_API_KEY=your_api_key_here
+
+# API Endpoint
+https://api.openai.com/v1/audio/speech
+```
+
+#### Supported Parameters
+```python
+{
+    "model": "tts-1|tts-1-hd",
+    "input": "text_content",
+    "voice": "alloy|echo|fable|onyx|nova|shimmer",
+    "speed": 0.25-4.0
+}
+```
+
+#### Features
+- **No SSML Support**: Plain text input only, automatic SSML stripping
+- **Content Limit**: 4,096 characters per request
+- **Voice Selection**: 6 neural voices optimized for different use cases
+- **Audio Format**: MP3 output (high quality)
+- **Models**: tts-1 (standard), tts-1-hd (high definition)
+- **Cost Effective**: Significantly cheaper than ElevenLabs
+- **Speed Control**: Natural speed adjustment (0.25x to 4x)
+
+#### Voice Characteristics
+- **alloy** - Balanced, neutral voice (default)
+- **echo** - Youthful, energetic tone
+- **fable** - Warm, storytelling quality
+- **onyx** - Deep, authoritative voice
+- **nova** - Professional, clear delivery
+- **shimmer** - Bright, engaging tone
 
 ### MiniMax TTS (To Be Implemented)
 
@@ -283,6 +323,9 @@ python TTS-extraction.py -t "Hello world" -o output.mp3
 # ElevenLabs
 python TTS-extraction.py -t "Hello world" -o output.mp3 --provider elevenlabs
 
+# OpenAI TTS
+python TTS-extraction.py -t "Hello world" -o output.mp3 --provider openai
+
 # MiniMax (when implemented)
 python TTS-extraction.py -t "Hello world" -o output.mp3 --provider minimax
 ```
@@ -311,6 +354,12 @@ python TTS-extraction.py -f content.ssml -o output.mp3 \
 python TTS-extraction.py -f content.txt -o output.mp3 \
   --provider elevenlabs \
   --voice "21m00Tcm4TlvDq8ikWAM"
+
+# OpenAI TTS with voice selection
+python TTS-extraction.py -f content.txt -o output.mp3 \
+  --provider openai \
+  --voice "nova" \
+  --rate 1.1
 ```
 
 ### Python API Usage
@@ -522,14 +571,27 @@ def reduce_chunk_size_on_error(original_size):
 
 #### Complete Workflow
 ```bash
-# Step 1: Generate formatted content
-python Tools/content_extractor.py articles.json -p google -o ./google_content
+# Step 1: Process articles from markdown to enhanced JSON
+python Tools/master_article_processor.py
 
-# Step 2: Convert to audio
+# Step 2: Generate formatted content with Audio Track Format
+python Tools/content_extractor.py ../Content/articles/raw_metadata/articles_with_summaries.json -p google -o ./google_content
+
+# Step 3: Convert to audio (individual files)
 for file in ./google_content/*.ssml; do
   python Tools/TTS-extraction.py -f "$file" -o "./audio/$(basename "$file" .ssml).mp3" --provider google
 done
+
+# Or Step 3: Batch convert to audio
+python Tools/batch_tts_processor.py ./google_content ./audio --provider google
 ```
+
+**Audio Track Structure**: All generated audio follows the structured format defined in [Audio_Track_Format_Specification.md](Audio_Track_Format_Specification.md), including:
+1. **Intro Jingle**: Referenced in SSML as `<audio src="intro_jingle.mp3"/>`
+2. **Title Announcement**: With proper prosody and emphasis
+3. **Author Attribution**: "By [Author Name]" extracted from JSON metadata  
+4. **Article Content**: Cleaned and formatted with appropriate SSML tags
+5. **Standardized Ending**: Consistent closing message across all tracks
 
 #### Batch Processing Script
 ```python
