@@ -790,7 +790,7 @@ def elevenlabs_tts_single(text, output_file, voice_id=None, model_id="eleven_tur
 
 def openai_tts_single(text, output_file, voice_name=None, model="tts-1", speed=1.0):
     """
-    Convert text to speech using OpenAI TTS API (single request)
+    Convert text to speech using OpenAI TTS API with automatic chunking for long content
     """
     api_key = os.getenv('OPENAI_API_KEY')
     if not api_key:
@@ -816,7 +816,33 @@ def openai_tts_single(text, output_file, voice_name=None, model="tts-1", speed=1
     # Speed must be between 0.25 and 4.0
     speed = max(0.25, min(4.0, speed))
     
+    # Strip SSML tags if present (OpenAI TTS doesn't support SSML)
+    clean_text = text
+    if is_ssml(text):
+        print("Note: OpenAI TTS doesn't support SSML. Converting to plain text...")
+        # Simple SSML tag removal
+        clean_text = re.sub(r'<[^>]+>', '', text)
+        # Clean up extra whitespace
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        # Remove XML declarations
+        clean_text = re.sub(r'<\?xml[^>]*\?>', '', clean_text)
+    
+    # Check if content exceeds OpenAI's 4096 character limit
+    MAX_OPENAI_CHARS = 4096
+    if len(clean_text) <= MAX_OPENAI_CHARS:
+        # Single request for short content
+        return openai_tts_single_request(clean_text, output_file, voice_name, model, speed)
+    else:
+        # Chunked processing for long content
+        print(f"Content length ({len(clean_text)} chars) exceeds OpenAI limit. Using chunked processing...")
+        return openai_tts_chunked(clean_text, output_file, voice_name, model, speed)
+
+def openai_tts_single_request(text, output_file, voice_name, model, speed):
+    """
+    Single OpenAI TTS API request (for content under 4096 characters)
+    """
     try:
+        api_key = os.getenv('OPENAI_API_KEY')
         url = "https://api.openai.com/v1/audio/speech"
         
         headers = {
@@ -824,20 +850,9 @@ def openai_tts_single(text, output_file, voice_name=None, model="tts-1", speed=1
             "Content-Type": "application/json"
         }
         
-        # Strip SSML tags if present (OpenAI TTS doesn't support SSML)
-        clean_text = text
-        if is_ssml(text):
-            print("Note: OpenAI TTS doesn't support SSML. Converting to plain text...")
-            # Simple SSML tag removal
-            clean_text = re.sub(r'<[^>]+>', '', text)
-            # Clean up extra whitespace
-            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-            # Remove XML declarations
-            clean_text = re.sub(r'<\?xml[^>]*\?>', '', clean_text)
-        
         payload = {
             "model": model,
-            "input": clean_text,
+            "input": text,
             "voice": voice_name,
             "speed": speed
         }
@@ -855,6 +870,154 @@ def openai_tts_single(text, output_file, voice_name=None, model="tts-1", speed=1
     except Exception as e:
         print(f"Error with OpenAI TTS: {e}")
         return False
+
+def openai_tts_chunked(text, output_file, voice_name, model, speed):
+    """
+    Process long content by chunking it into segments and combining the audio
+    """
+    import tempfile
+    import os
+    
+    MAX_CHUNK_CHARS = 3000  # More conservative limit for safety
+    
+    try:
+        # Smart chunking - split at sentence boundaries when possible
+        chunks = smart_text_chunking(text, MAX_CHUNK_CHARS)
+        print(f"Split content into {len(chunks)} chunks")
+        
+        # Validate all chunks are under the limit
+        for i, chunk in enumerate(chunks):
+            if len(chunk) > 4000:  # Conservative check
+                print(f"Warning: Chunk {i+1} is {len(chunk)} chars, may exceed OpenAI limit")
+                # Further split this chunk if needed
+                if len(chunk) > 4000:
+                    sub_chunks = split_long_paragraph(chunk, 2500)  # More aggressive split
+                    chunks = chunks[:i] + sub_chunks + chunks[i+1:]
+                    print(f"Re-split into {len(chunks)} total chunks")
+        
+        # Generate audio for each chunk
+        temp_files = []
+        for i, chunk in enumerate(chunks):
+            # Create temporary file for this chunk
+            temp_fd, temp_path = tempfile.mkstemp(suffix=f'_chunk_{i}.mp3')
+            os.close(temp_fd)
+            temp_files.append(temp_path)
+            
+            print(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} chars)...")
+            success = openai_tts_single_request(chunk, temp_path, voice_name, model, speed)
+            if not success:
+                # Cleanup temp files on failure
+                for temp_file in temp_files:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                return False
+        
+        # Combine all audio chunks using ffmpeg
+        success = combine_audio_files(temp_files, output_file)
+        
+        # Cleanup temporary files
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        
+        return success
+        
+    except Exception as e:
+        print(f"Error in chunked OpenAI TTS: {e}")
+        return False
+
+def smart_text_chunking(text, max_chars):
+    """
+    Split text into chunks at natural boundaries (sentences/paragraphs) when possible
+    """
+    chunks = []
+    
+    # First try splitting at paragraph boundaries
+    paragraphs = text.split('\n\n')
+    current_chunk = ""
+    
+    for para in paragraphs:
+        # If adding this paragraph would exceed the limit
+        if len(current_chunk) + len(para) + 2 > max_chars:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = para
+            else:
+                # Single paragraph is too long, split at sentence boundaries
+                sentence_chunks = split_long_paragraph(para, max_chars)
+                chunks.extend(sentence_chunks)
+        else:
+            if current_chunk:
+                current_chunk += "\n\n" + para
+            else:
+                current_chunk = para
+    
+    # Add the last chunk if it exists
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
+def split_long_paragraph(text, max_chars):
+    """
+    Split a long paragraph at sentence boundaries, with aggressive splitting for very long content
+    """
+    import re
+    chunks = []
+    
+    # Split at sentence boundaries
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    current_chunk = ""
+    
+    for sentence in sentences:
+        # Check if adding this sentence would exceed the limit
+        if len(current_chunk) + len(sentence) + 1 > max_chars:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            
+            # Handle very long single sentences
+            if len(sentence) > max_chars:
+                # Split long sentence at comma, semicolon, or colon boundaries first
+                sub_parts = re.split(r'(?<=[,;:])\s+', sentence)
+                temp_chunk = ""
+                
+                for part in sub_parts:
+                    if len(temp_chunk) + len(part) + 1 > max_chars:
+                        if temp_chunk:
+                            chunks.append(temp_chunk.strip())
+                            temp_chunk = part
+                        else:
+                            # Force split at word boundaries if still too long
+                            while len(part) > max_chars:
+                                # Find last space before max_chars
+                                split_pos = part.rfind(' ', 0, max_chars)
+                                if split_pos == -1:  # No space found, force split
+                                    split_pos = max_chars
+                                chunks.append(part[:split_pos].strip())
+                                part = part[split_pos:].strip()
+                            if part.strip():
+                                temp_chunk = part
+                    else:
+                        if temp_chunk:
+                            temp_chunk += " " + part
+                        else:
+                            temp_chunk = part
+                
+                if temp_chunk.strip():
+                    current_chunk = temp_chunk
+            else:
+                current_chunk = sentence
+        else:
+            if current_chunk:
+                current_chunk += " " + sentence
+            else:
+                current_chunk = sentence
+    
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+    
+    return chunks
 
 def text_to_speech_single(text, output_file, lang='en-US', voice_name=None, audio_format='MP3', 
                          speaking_rate=1.0, pitch=0.0, volume_gain_db=0.0, force_ssml=False, provider=PROVIDER_GOOGLE):

@@ -66,6 +66,24 @@ All generated content follows the 5-part Audio Track Format:
 4. **Article Content** (cleaned and formatted)
 5. **Standardized Ending** (consistent closing message)
 
+## Recent Updates (September 2, 2025)
+
+### Master Article Processor v1.1
+- **Enhanced Date Extraction**: Fixed 6 articles with incorrect "2025-01-01" dates
+- **Site-Specific Patterns**: Added specialized extraction for LinkedIn, Substack, PMArchive, Airtable
+- **HTML Metadata**: Comprehensive parsing of publication dates and images from meta tags
+- **Improved Accuracy**: Real publication dates now extracted (e.g., "2007-06-25" for PMArchive)
+
+### Content Extractor v2.3
+- **Path Resolution Fix**: Corrected duplicate directory creation issue
+- **Proper Output**: Files now go to `Content/articles/[provider]/` instead of nested `audeon_tools/audeon_tools/`
+- **OpenAI TTS**: Added support with proper .txt file generation
+
+### Documentation Updates
+- Updated technical specifications with latest fixes and improvements
+- Enhanced troubleshooting guides and API references
+- Added version history tracking for all major components
+
 ## Coding Conventions
 - Python scripts in Tools/ directory
 - JSON metadata in Content/articles/raw_metadata/

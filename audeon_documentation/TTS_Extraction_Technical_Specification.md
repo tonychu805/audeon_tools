@@ -1,7 +1,7 @@
 # TTS-Extraction Technical Specification
 
-**Version**: 1.0  
-**Date**: 2025-01-21  
+**Version**: 1.1  
+**Date**: September 2, 2025  
 **Document**: TTS-Extraction Audio Generation Tool Specification
 
 ---
@@ -26,7 +26,8 @@
 TTS-Extraction is a comprehensive audio generation tool that converts text and SSML content to speech using multiple TTS providers. It handles large content processing, multi-voice synthesis, and audio file management with advanced chunking and combination capabilities.
 
 ### Key Features
-- **Multi-Provider Support**: Google Cloud TTS, ElevenLabs, MiniMax TTS
+- **Multi-Provider Support**: Google Cloud TTS, ElevenLabs, MiniMax TTS, OpenAI TTS (NEW)
+- **Enhanced Chunking**: Improved content splitting for OpenAI TTS limits (v1.1)
 - **Format Support**: Plain text, SSML, provider-specific formats
 - **Large Content Handling**: Automatic chunking for content over API limits
 - **Multi-Voice Processing**: Supports SSML with multiple voice sections

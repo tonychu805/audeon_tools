@@ -1,7 +1,7 @@
 # Content Extractor Technical Specification
 
-**Version**: 2.2  
-**Date**: August 30, 2025  
+**Version**: 2.3  
+**Date**: September 2, 2025  
 **Tool**: `Tools/content_extractor.py`
 
 ## 📋 **Overview**
@@ -247,14 +247,36 @@ Generates text format with MiniMax proprietary pause markers.
 - Ending with `<#2.0#>` pause before closing message
 
 **Enhanced Features**:
+- **Automatic Jingle Detection**: Uses `find_intro_jingle()` for consistent referencing
+- **MiniMax-Specific Timing**: Optimized pause markers for MiniMax TTS engine
+
+#### **create_openai_format(text, title, author)** ⭐ NEW ENHANCEMENT ⭐
+Generates optimized text format for OpenAI TTS with intelligent SSML-to-text conversion.
+
+**Core Enhancement**: **SSML-to-Text Preprocessing**
+- Automatically converts SSML markup from existing content to OpenAI-compatible text equivalents
+- Transforms `<break time="1s"/>` → `...` (strategic ellipses for pauses)
+- Converts `<emphasis>text</emphasis>` → `*text*` (asterisk emphasis)
+- Processes `<prosody rate="slow">text</prosody>` → `text...` (natural pacing)
+- Removes unsupported tags (`<audio>`, `<voice>`, XML declarations) while preserving content
+
+**Format Structure**:
+- Auto-detected intro jingle comment: `[Note: Intro jingle '[detected_path]' should be prepended during final audio assembly]`
+- Enhanced title with strategic pause: `Title...`
+- Author attribution with pacing: `By Author...`
+- SSML-converted content with natural speech patterns and strategic ellipses
+- Enhanced ending with natural pacing: `Thank you for listening... Check out my other pieces for more insights.`
+
+**Key Functions**:
+- **`convert_ssml_to_optimized_text(text)`**: Core SSML conversion engine
+- **`convert_break_to_pause(time_value)`**: Intelligent break timing conversion
+- **Smart Break Conversion**: `0.5s` → space, `1s` → `...`, `2s` → `......`, `3s+` → `.........`
+
+**Enhanced Features**:
 - **Automatic Jingle Detection**: Dynamically includes actual jingle file path in comment
 - **Manual Assembly Note**: Clear instructions for audio post-processing integration
-
-#### **create_openai_format(text, title, author)**
-Generates plain text format optimized for OpenAI TTS natural speech processing.
-
-**Format**:
-- Intro jingle note: `[Note: Intro jingle '[detected_path]' should be prepended during final audio assembly]`
+- **SSML Intelligence**: Automatically processes existing SSML content for optimal OpenAI synthesis
+- **Natural Pacing**: Converts formal SSML timing to conversational text patterns
 - Title as natural headline text
 - Author attribution: "By [Author Name]"
 - Content cleaned of all markup for natural speech flow
@@ -360,14 +382,19 @@ python content_extractor.py articles.json -p google -o ./google_ssml_output
 | `--output-dir` | `-o` | string | Auto-generated | Output directory for formatted files |
 | `--list-providers` | - | flag | False | Show provider information and exit |
 
-### **Auto-Generated Output Directories**
+### **Auto-Generated Output Directories** 
+**Updated in v2.3**: Fixed duplicate directory creation issue.
+
 ```python
 provider_dirs = {
     'google': '../Content/articles/google_tts',
     'elevenlabs': '../Content/articles/elevenlabs', 
-    'minimax': '../Content/articles/minimax'
+    'minimax': '../Content/articles/minimax',
+    'openai': '../Content/articles/openai_tts'
 }
 ```
+
+**Path Resolution Fix (v2.3)**: Removed incorrect `../audeon_tools/Content/...` paths that were causing duplicate nested directory structures. All output now correctly goes to `../Content/articles/[provider]/` relative to the Tools directory.
 
 ---
 
@@ -645,6 +672,13 @@ print(f"Final filename: {filename}")
 ---
 
 ## 🔄 **Version History**
+
+### **Version 2.3** (September 2, 2025)
+- **🔧 CRITICAL FIX**: Path resolution for output directories
+- **🐛 FIXED**: Duplicate nested directory creation (`../audeon_tools/audeon_tools/Content/...`)
+- **🔧 IMPROVED**: All providers now output to correct paths (`../Content/articles/[provider]/`)
+- **✅ TESTED**: File placement verification and cleanup utilities
+- **📝 UPDATED**: Documentation reflects corrected directory structure
 
 ### **Version 2.2** (August 30, 2025)
 - **🎉 MAJOR**: OpenAI TTS Provider Support

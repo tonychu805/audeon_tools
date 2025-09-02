@@ -342,6 +342,7 @@ def create_minimax_format(text, title="", author=""):
 def create_openai_format(text, title="", author=""):
     """
     Create OpenAI TTS compatible text format following Audio Track Format Specification
+    Enhanced with SSML-to-text conversion for improved speech quality
     """
     if not text:
         return ""
@@ -349,21 +350,27 @@ def create_openai_format(text, title="", author=""):
     # Detect intro jingle file
     intro_jingle_path = find_intro_jingle()
     
+    # Apply SSML-to-text preprocessing to improve OpenAI TTS quality
+    processed_text = convert_ssml_to_optimized_text(text)
+    processed_title = convert_ssml_to_optimized_text(title) if title else ""
+    processed_author = convert_ssml_to_optimized_text(author) if author else ""
+    
     formatted_text = ""
     
-    # 1. Intro Jingle Reference (Note: OpenAI TTS doesn't support audio references, noted in comment)
-    formatted_text += f"[Note: Intro jingle '{intro_jingle_path}' should be prepended during final audio assembly]\n\n"
+    # 1. Intro Jingle Reference (Note: OpenAI TTS doesn't support audio references)
+    # The intro jingle note is handled by TTS-extraction.py, not included in spoken text
     
-    # 2. Title Announcement
-    if title:
-        formatted_text += title.strip() + "\n\n"
+    # 2. Title Announcement - Enhanced with strategic formatting
+    if processed_title:
+        # Add emphasis through strategic punctuation and pacing
+        formatted_text += f"{processed_title.strip()}...\n\n"
     
-    # 3. Author Attribution
-    if author:
-        formatted_text += f"By {author.strip()}\n\n"
+    # 3. Author Attribution - Enhanced with natural pacing
+    if processed_author:
+        formatted_text += f"By {processed_author.strip()}...\n\n"
     
-    # 4. Article Content - Clean and format for natural speech
-    paragraphs = text.split('\n\n')
+    # 4. Article Content - Enhanced with SSML-converted formatting
+    paragraphs = processed_text.split('\n\n')
     
     for i, paragraph in enumerate(paragraphs):
         paragraph = paragraph.strip()
@@ -371,7 +378,7 @@ def create_openai_format(text, title="", author=""):
             continue
         
         # Skip if this paragraph is the same as the title we already added
-        if title and paragraph.strip() == title.strip():
+        if processed_title and paragraph.strip() == processed_title.strip():
             continue
             
         # Check if paragraph looks like a heading
@@ -380,26 +387,113 @@ def create_openai_format(text, title="", author=""):
                      not paragraph.endswith('!') and 
                      not paragraph.endswith('?') and
                      '\n' not in paragraph and
-                     paragraph != title)
+                     paragraph != processed_title)
         
         if is_heading:
-            # Format as heading with natural pause
-            formatted_text += paragraph + "\n\n"
+            # Format as heading with enhanced emphasis and natural pause
+            formatted_text += f"{paragraph}...\n\n"
         else:
-            # Regular paragraph - clean format for natural speech
+            # Regular paragraph - enhanced with converted SSML formatting
             sentences = split_into_sentences(paragraph)
             for sentence in sentences:
                 if sentence.strip():
                     formatted_text += sentence.strip() + " "
             
-            # Add paragraph break
+            # Add paragraph break with strategic pause
             if i < len(paragraphs) - 1:
-                formatted_text += "\n\n"
+                formatted_text += "...\n\n"
     
-    # 5. Standardized Ending
-    formatted_text += "\n\nThank you for listening. Check out my other pieces for more insights."
+    # 5. Standardized Ending - Enhanced with natural pacing
+    formatted_text += "...\n\nThank you for listening... Check out my other pieces for more insights."
     
     return formatted_text.strip()
+
+def convert_ssml_to_optimized_text(text):
+    """
+    Convert SSML markup to optimized text formatting for OpenAI TTS
+    Transforms SSML elements into text equivalents that improve speech synthesis
+    """
+    if not text:
+        return ""
+    
+    import re
+    
+    # Convert SSML breaks to strategic pauses using ellipses
+    text = re.sub(r'<break\s+time="([^"]+)"\s*/>', lambda m: convert_break_to_pause(m.group(1)), text)
+    text = re.sub(r'<break\s*/>', '... ', text)  # Default break
+    
+    # Convert emphasis tags to strategic formatting
+    text = re.sub(r'<emphasis[^>]*>(.*?)</emphasis>', r'*\1*', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Convert prosody (rate, pitch, volume) to strategic punctuation
+    text = re.sub(r'<prosody\s+rate="slow"[^>]*>(.*?)</prosody>', r'\1...', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<prosody\s+rate="fast"[^>]*>(.*?)</prosody>', r'\1!', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<prosody[^>]*>(.*?)</prosody>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Convert voice tags (remove but preserve content)
+    text = re.sub(r'<voice[^>]*>(.*?)</voice>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Convert sentence tags to natural sentence boundaries
+    text = re.sub(r'<s[^>]*>(.*?)</s>', r'\1. ', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Convert paragraph tags to natural paragraph breaks
+    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\1\n\n', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Remove audio tags (OpenAI can't handle them)
+    text = re.sub(r'<audio[^>]*/?>', '', text, flags=re.IGNORECASE)
+    
+    # Remove speak tags (root SSML wrapper)
+    text = re.sub(r'</?speak[^>]*>', '', text, flags=re.IGNORECASE)
+    
+    # Remove XML declaration
+    text = re.sub(r'<\?xml[^>]*\?>', '', text)
+    
+    # Remove any remaining HTML/XML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Clean up extra whitespace and line breaks
+    text = re.sub(r'\n{3,}', '\n\n', text)  # Max 2 consecutive newlines
+    text = re.sub(r' {2,}', ' ', text)  # Remove multiple spaces
+    text = text.strip()
+    
+    return text
+
+def convert_break_to_pause(time_value):
+    """
+    Convert SSML break time values to appropriate text pauses
+    """
+    if not time_value:
+        return '... '
+    
+    # Parse time values and convert to appropriate ellipses
+    if 's' in time_value:  # seconds
+        try:
+            seconds = float(time_value.replace('s', ''))
+            if seconds <= 0.5:
+                return ' '
+            elif seconds <= 1.0:
+                return '... '
+            elif seconds <= 2.0:
+                return '...... '
+            else:
+                return '......... '
+        except ValueError:
+            return '... '
+    elif 'ms' in time_value:  # milliseconds
+        try:
+            ms = float(time_value.replace('ms', ''))
+            if ms <= 500:
+                return ' '
+            elif ms <= 1000:
+                return '... '
+            elif ms <= 2000:
+                return '...... '
+            else:
+                return '......... '
+        except ValueError:
+            return '... '
+    else:
+        return '... '
 
 def split_into_sentences(text):
     """
@@ -764,12 +858,12 @@ Examples:
     # Set default output directory based on provider
     if not args.output_dir:
         provider_dirs = {
-            'google': '../audeon_tools/Content/articles/google_tts',
-            'elevenlabs': '../audeon_tools/Content/articles/elevenlabs',
-            'minimax': '../audeon_tools/Content/articles/minimax',
-            'openai': '../audeon_tools/Content/articles/openai_tts'
+            'google': '../Content/articles/google_tts',
+            'elevenlabs': '../Content/articles/elevenlabs',
+            'minimax': '../Content/articles/minimax',
+            'openai': '../Content/articles/openai_tts'
         }
-        args.output_dir = provider_dirs.get(args.provider, '../audeon_tools/Content/articles/output')
+        args.output_dir = provider_dirs.get(args.provider, '../Content/articles/output')
     
     # Print provider info
     provider_config = TTS_PROVIDERS[args.provider]
